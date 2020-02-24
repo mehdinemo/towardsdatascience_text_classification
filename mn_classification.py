@@ -2,9 +2,19 @@ import pandas as pd
 from clean_text import CleanData
 
 from sklearn.model_selection import train_test_split
+from nltk import ngrams
+
+import numpy as np
+import matplotlib.pyplot as plt
+
+from mlxtend.frequent_patterns import apriori
+from mlxtend.frequent_patterns import association_rules
 
 
-def main():
+def main(X_train, X_test):
+
+
+
     print('done')
 
 
@@ -16,10 +26,28 @@ if __name__ == '__main__':
 
     cd = CleanData()
 
-    data_clean = cd.clean_text(train, 'text')
+    data_clean = cd.clean_text(train.copy(), 'text')
+    data_clean['transactions'] = data_clean['text'].str.split()
+
     # data_clean.to_csv('data/data_clean.csv', index=False, header=True)
 
     # select train and test data
     X_train, X_test, y_train, y_test = train_test_split(data_clean['text'], data_clean['target'], random_state=0)
 
-    main()
+
+
+    sentence = 'this is a foo bar sentences and i want to noramalize it'
+    sentence.split()
+
+    n = 1
+    sixgrams = ngrams(sentence.split(), n)
+
+
+    transactions = []
+    for grams in sixgrams:
+        transactions.append(grams[0])
+        # print(grams)
+
+
+
+    # main(X_train, X_test)
