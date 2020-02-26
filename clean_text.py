@@ -19,8 +19,9 @@ class CleanData:
         return df
 
     def normalize_text(self, train):
-        data_clean = self.clean_text(train, "text")
-        data_clean['text'] = data_clean['text'].apply(
+        train['clean_text'] = train['text']
+        data_clean = self.clean_text(train, "clean_text")
+        data_clean['clean_text'] = data_clean['clean_text'].apply(
             lambda x: ' '.join([word for word in x.split() if word not in (stop)]))
 
         return data_clean

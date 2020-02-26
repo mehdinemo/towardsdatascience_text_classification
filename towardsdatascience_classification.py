@@ -11,7 +11,7 @@ from sklearn.metrics import classification_report
 from clean_text import CleanData
 
 
-def train_and_test_model(X_train, y_train, X_test, y_test):
+def train_and_test_model(X_train, y_train, X_test):
     pipeline_sgd = Pipeline([
         ('vect', CountVectorizer()),
         ('tfidf', TfidfTransformer()),
@@ -45,7 +45,7 @@ def towardsdatascience(X_train, X_test, y_train, y_test, test, cd):
     # normalize text (lower down, delete url, delete # from hashtags)
 
     # train and test model
-    results = train_and_test_model(X_train, y_train, X_test, y_test)
+    results = train_and_test_model(X_train, y_train, X_test)
     model = results['model']
     y_predict = results['y_predict']
     print(classification_report(y_test, y_predict))
@@ -59,17 +59,24 @@ if __name__ == '__main__':
     train = pd.read_csv('data/train.csv')
     test = pd.read_csv('data/test.csv')
 
-    train = train.drop(['keyword', 'location', 'id'], axis=1)
+    train = train.drop(['keyword', 'location'], axis=1)
 
     cd = CleanData()
 
-    data_clean = cd.clean_text(train, 'text')
+    data_clean = cd.clean_text(train.copy(), 'text')
     # data_clean.to_csv('data/data_clean.csv', index=False, header=True)
 
     # select train and test data
     X_train, X_test, y_train, y_test = train_test_split(data_clean['text'], data_clean['target'], random_state=0)
 
+    results = train_and_test_model(data_clean['text'], data_clean['target'], data_clean['text'])
+    y_predict = results['y_predict']
+    print(classification_report(data_clean['target'], y_predict))
+    submission = pd.DataFrame(y_predict)
+    submission['id'] = train['id']
+    submission.to_csv('data/submission_all.csv', index=False, header=True)
+
     submission_df_1 = towardsdatascience(X_train, X_test, y_train, y_test, test, cd)
-    # submission_df_1.to_csv('data/submission_1.csv', index=False)
+    submission_df_1.to_csv('data/submission_1.csv', index=False)
 
     print('done')

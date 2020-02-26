@@ -6,27 +6,96 @@ from mlxtend.preprocessing import TransactionEncoder
 from mlxtend.frequent_patterns import apriori
 from mlxtend.frequent_patterns import association_rules
 
+from sklearn import svm
+from sklearn.linear_model import LogisticRegression
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import classification_report
+
+import spacy
+
+from tqdm import tqdm
+
 
 def extract_hashtags(text):
     tmp = {tag for tag in text.split() if tag.startswith("#")}
     return list(tmp)
 
 
+def text_to_vector(data_clean, ones_keywords, ones_hashtags, zeros_keywords, zeros_hashtags, keywords, entity_weight):
+    results = pd.DataFrame()
+    for index, row in tqdm(data_clean.iterrows(), total=data_clean.shape[0]):
+        row_dic = {}
+        for f in ones_keywords:
+            if f in row['keywords']:
+                row_dic.update({f: 1})
+            else:
+                row_dic.update({f: 0})
+        for f in ones_hashtags:
+            if f in row['hashtags']:
+                row_dic.update({f: 4})
+            else:
+                row_dic.update({f: 0})
+
+        for f in zeros_keywords:
+            if f in row['keywords']:
+                row_dic.update({f: -1})
+            else:
+                row_dic.update({f: 0})
+        for f in zeros_hashtags:
+            if f in row['hashtags']:
+                row_dic.update({f: -4})
+            else:
+                row_dic.update({f: 0})
+
+        results = results.append(row_dic, ignore_index=True)
+
+    return results
+
+
+def extract_ents(keywords):
+    nlp = spacy.load('en_core_web_md')
+    key_ents = {}
+    for key in tqdm(keywords):
+        doc = nlp(key)
+        if len(doc.ents) > 0:
+            key_ents.update({key: doc.ents[0].label_})
+
+    return key_ents
+
+
 def main():
     train = pd.read_csv('data/train.csv')
     # test = pd.read_csv('data/test.csv')
-
-    train['hashtags'] = train['text'].apply(lambda x: extract_hashtags(x))
+    entity_weight = pd.read_csv('data/entity_weight.csv')
 
     train = train.drop(['keyword', 'location', 'id'], axis=1)
 
-    cd = CleanData()
+    # train_hashtags = train.copy()
+    train['hashtags'] = train['text'].apply(lambda x: extract_hashtags(x))
+    train_hashtags = train[train['hashtags'].map(lambda d: len(d)) > 0].copy()
+    train_hashtags['target'] = train_hashtags['target'].astype(str)
+    train_hashtags['t'] = train_hashtags['hashtags'] + train_hashtags['target'].apply(lambda x: [x])
 
+    # hashtags = []
+    # for x in train['hashtags']:
+    #     hashtags.extend(x)
+    #
+    # hashtags = list(set(hashtags))
+
+    cd = CleanData()
     data_clean = cd.normalize_text(train.copy())
-    data_clean['transactions'] = data_clean['text'].str.split()
+    data_clean['keywords'] = data_clean['clean_text'].str.split()
     data_clean['target'] = data_clean['target'].astype('str')
 
-    data_clean['t'] = data_clean['transactions'] + data_clean['target'].apply(lambda x: [x])
+    # keywords of all rows
+    keys = []
+    data_clean['keywords'].apply(lambda x: keys.extend(x))
+    keys = list(set(keys))
+    # keywords = extract_ents(keys)
+    # (pd.DataFrame.from_dict(keywords, orient='index')).to_csv('data/keywords.csv')
+    keywords = pd.read_csv('data/keywords.csv')
+
+    data_clean['t'] = data_clean['keywords'] + data_clean['target'].apply(lambda x: [x])
 
     te = TransactionEncoder()
     te_ary = te.fit(data_clean['t']).transform(data_clean['t'])
@@ -39,14 +108,59 @@ def main():
     rules["antecedent_len"] = rules["antecedents"].apply(lambda x: len(x))
 
     one_rules = rules[(rules['consequents'] == {'1'})]
-
-    one_rules = one_rules[(one_rules['confidence'] >= 0.7)]
+    one_rules = one_rules[(one_rules['confidence'] >= 0.55)]
     # one_rules = one_rules[(one_rules['antecedent_len'] >= 2) &
     #                   (one_rules['confidence'] > 0.75) &
     #                   (one_rules['lift'] > 1.2)]
 
     zero_rules = rules[(rules['consequents'] == {'0'})]
-    zero_rules = zero_rules[(zero_rules['confidence'] >= 0.7)]
+    zero_rules = zero_rules[(zero_rules['confidence'] >= 0.55)]
+
+    # hashtag rules
+    te_hashtags = TransactionEncoder()
+    te_ary_hashtags = te_hashtags.fit(train_hashtags['t']).transform(train_hashtags['t'])
+    df_hashtags = pd.DataFrame(te_ary_hashtags, columns=te_hashtags.columns_)
+    frequent_itemsets_hashtags = apriori(df_hashtags, min_support=0.005, use_colnames=True)
+
+    rules_hashtags = association_rules(frequent_itemsets_hashtags, metric="confidence", min_threshold=0.6)
+    # rules_hashtags = association_rules(frequent_itemsets_hashtags, metric="lift", min_threshold=1.2)
+
+    rules_hashtags["antecedent_len"] = rules_hashtags["antecedents"].apply(lambda x: len(x))
+
+    one_rules_hashtags = rules_hashtags[(rules_hashtags['consequents'] == {'1'})]
+    one_rules_hashtags = one_rules_hashtags[(one_rules_hashtags['confidence'] >= 0.55)]
+
+    zero_rules_hashtags = rules_hashtags[(rules_hashtags['consequents'] == {'0'})]
+    zero_rules_hashtags = zero_rules_hashtags[(zero_rules_hashtags['confidence'] >= 0.55)]
+
+    # frozensets of keywords and hashtags
+    ones_keywords = list(one_rules['antecedents'])
+    ones_keywords = frozenset().union(*ones_keywords)
+    ones_hashtags = list(one_rules_hashtags['antecedents'])
+    ones_hashtags = frozenset().union(*ones_hashtags)
+
+    zeros_keywords = list(zero_rules['antecedents'])
+    zeros_keywords = frozenset().union(*zeros_keywords)
+    zeros_hashtags = list(zero_rules_hashtags['antecedents'])
+    zeros_hashtags = frozenset().union(*zeros_hashtags)
+
+    # vector of messages
+    messages_vector = text_to_vector(data_clean, ones_keywords, ones_hashtags, zeros_keywords, zeros_hashtags, keywords, entity_weight)
+    X_train_df, X_test_df, y_train, y_test = train_test_split(data_clean['text'], data_clean['target'], random_state=0)
+
+    X_train = messages_vector.iloc[X_train_df.index].values
+    X_test = messages_vector.iloc[X_test_df.index].values
+
+    # train model
+    clf = LogisticRegression(random_state=0).fit(X_train, y_train)
+    y_predict = clf.predict(X_test)
+    print(classification_report(y_test, y_predict))
+
+    clf_svm = svm.SVC()
+    clf_svm.fit(X_train, y_train)
+    y_predict = clf_svm.predict(X_test)
+    print(classification_report(y_test, y_predict))
+
     print('done')
 
 
