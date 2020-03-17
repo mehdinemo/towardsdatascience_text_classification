@@ -4,12 +4,6 @@ from clean_text import CleanData
 from sklearn.model_selection import train_test_split
 from nltk import ngrams
 
-import numpy as np
-import matplotlib.pyplot as plt
-
-from mlxtend.frequent_patterns import apriori
-from mlxtend.frequent_patterns import association_rules
-
 
 def main(X_train, X_test):
 
