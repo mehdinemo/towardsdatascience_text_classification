@@ -1,6 +1,6 @@
 import pandas as pd
 from clean_text import CleanData
-from apyori import apriori
+# from apyori import apriori
 
 from mlxtend.preprocessing import TransactionEncoder
 from mlxtend.frequent_patterns import apriori
@@ -51,6 +51,7 @@ def text_to_vector_ar(data_clean, ones_keywords, ones_hashtags, zeros_keywords, 
 
     return results
 
+
 def text_to_vector_ar_all(data_clean, rule_keywords, keywords):
     results = pd.DataFrame()
     for index, row in tqdm(data_clean.iterrows(), total=data_clean.shape[0]):
@@ -80,6 +81,7 @@ def text_to_vector_ar_all(data_clean, rule_keywords, keywords):
         results = results.append(row_dic, ignore_index=True)
 
     return results
+
 
 def text_to_vector_weighted_entity(data_clean, keywords):
     results = pd.DataFrame(columns=keywords.keys())
@@ -151,21 +153,20 @@ def main():
     df = pd.DataFrame(te_ary, columns=te.columns_)
     frequent_itemsets = apriori(df, min_support=0.005, use_colnames=True)
 
-    rules = association_rules(frequent_itemsets, metric="confidence", min_threshold=0.6)
+    rules = association_rules(frequent_itemsets)
     # rules = association_rules(frequent_itemsets, metric="lift", min_threshold=1.2)
 
     rules["antecedent_len"] = rules["antecedents"].apply(lambda x: len(x))
     rules = rules[((rules['consequents'] == {'1'}) | (rules['consequents'] == {'0'})) & (rules['confidence'] >= 0.55)]
+    tmp = rules[(rules['consequents'] == {'1'}) | (rules['consequents'] == {'0'})]
     rule_keywords = list(rules['antecedents'])
     rule_keywords = frozenset().union(*rule_keywords)
 
     with open('data/rule_keywords.txt', 'w') as f:
         for item in rule_keywords:
             f.write("%s\n" % item)
-    
 
     rule_entity_keywords = {key: value for key, value in keywords_dic.items() if key in rule_keywords}
-
 
     # one_rules = rules[((rules['consequents'] == {'1'}) | (rules['consequents'] == {'0'})) & (rules['confidence'] >= 0.55)]
     # one_rules = one_rules[(one_rules['confidence'] >= 0.55)]
